@@ -4,6 +4,7 @@ const app = express();
 let latestFrame = null;
 let frameTimestamp = 0;
 let pendingCommand = null;
+let lastSentFrame = null;
 
 // HP POST frame di sini
 app.post('/upload-frame', express.raw({ type: 'image/jpeg', limit: '5mb' }), (req, res) => {
@@ -32,7 +33,9 @@ app.get('/stream', (req, res) => {
     });
     
     const sendFrame = () => {
-        if (latestFrame) {
+        // Kirim frame hanya kalau baru (tidak duplikat) dan fresh (<500ms old)
+        if (latestFrame && latestFrame !== lastSentFrame && Date.now() - frameTimestamp < 500) {
+            lastSentFrame = latestFrame;
             res.write(`--frame\r\n`);
             res.write(`Content-Type: image/jpeg\r\n`);
             res.write(`Content-Length: ${latestFrame.length}\r\n\r\n`);
