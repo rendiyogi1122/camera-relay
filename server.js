@@ -1,0 +1,90 @@
+const express = require('express');
+const app = express();
+
+let latestFrame = null;
+let frameTimestamp = 0;
+let pendingCommand = null;
+
+// HP POST frame di sini
+app.post('/upload-frame', express.raw({ type: 'image/jpeg', limit: '5mb' }), (req, res) => {
+    latestFrame = req.body;
+    frameTimestamp = Date.now();
+    
+    // Kirim command yang pending (jika ada) ke HP
+    const cmd = pendingCommand || 'ok';
+    pendingCommand = null;
+    
+    res.send(cmd);
+});
+
+// Switch camera command dari browser PC
+app.post('/switch-camera', (req, res) => {
+    pendingCommand = 'switch';
+    res.send('Command queued');
+});
+
+// Browser GET MJPEG stream
+app.get('/stream', (req, res) => {
+    res.set({
+        'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+    
+    const sendFrame = () => {
+        if (latestFrame) {
+            res.write(`--frame\r\n`);
+            res.write(`Content-Type: image/jpeg\r\n`);
+            res.write(`Content-Length: ${latestFrame.length}\r\n\r\n`);
+            res.write(latestFrame);
+            res.write('\r\n');
+        }
+        if (!req.closed) setTimeout(sendFrame, 100);  // ~10fps
+    };
+    sendFrame();
+    
+    req.on('close', () => res.end());
+});
+
+// Serve HTML control page di GET /
+app.get('/', (req, res) => {
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Camera Stream Relay</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; }
+                button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 20px; background: #007bff; color: white; border: none; border-radius: 4px; }
+                button:hover { background: #0056b3; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Camera Stream Relay</h1>
+                <img src="/stream" alt="Camera Stream">
+                <br>
+                <button onclick="switchCamera()">Switch Camera</button>
+            </div>
+            <script>
+                function switchCamera() {
+                    fetch('/switch-camera', { method: 'POST' })
+                        .then(r => r.text())
+                        .then(msg => alert('Switch command sent to phone'))
+                        .catch(e => console.error(e));
+                }
+            </script>
+        </body>
+        </html>
+    `;
+    res.send(html);
+});
+
+// Health check untuk Render
+app.get('/health', (req, res) => res.send('OK'));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`Relay running on ${PORT}`));
