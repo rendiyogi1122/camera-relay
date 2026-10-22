@@ -60,16 +60,19 @@ app.get('/stream', (req, res) => {
             <style>
                 body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
                 .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; }
-                button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 10px; background: #007bff; color: white; border: none; border-radius: 4px; }
+                .img-wrapper { position: relative; display: inline-block; }
+                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; display: block; }
+                button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 10px; background: #007bff; color: white; border: none; border-radius: 4px; position: relative; z-index: 10; }
                 button:hover { background: #0056b3; }
-                .btn-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+                .btn-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; position: relative; z-index: 10; }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>Camera Stream</h1>
-                <img src="/mjpeg" alt="Camera Stream">
+                <div class="img-wrapper">
+                    <img src="/mjpeg" alt="Camera Stream">
+                </div>
                 <br>
                 <div class="btn-row">
                     <button onclick="switchCamera()">Switch Camera</button>
