@@ -81,7 +81,7 @@ app.get('/', (req, res) => {
                 <script>
                     const img = document.querySelector('img');
                     function rotateImg(deg) {
-                        img.style.transform = `rotate(${deg}deg)`;
+                        img.style.transform = 'rotate(' + deg + 'deg)';
                     }
                     function switchCamera() {
                         fetch('/switch-camera', { method: 'POST' })
