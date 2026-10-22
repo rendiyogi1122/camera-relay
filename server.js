@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
             <style>
                 body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
                 .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; }
+                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; image-transform: rotate(-90deg); transform: rotate(-90deg); transform-origin: center; }
                 button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 20px; background: #007bff; color: white; border: none; border-radius: 4px; }
                 button:hover { background: #0056b3; }
             </style>
