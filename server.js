@@ -24,8 +24,8 @@ app.post('/switch-camera', (req, res) => {
     res.send('Command queued');
 });
 
-// Browser GET MJPEG stream
-app.get('/stream', (req, res) => {
+// Browser GET MJPEG stream (raw)
+app.get('/mjpeg', (req, res) => {
     res.set({
         'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
         'Cache-Control': 'no-cache',
@@ -49,13 +49,13 @@ app.get('/stream', (req, res) => {
     req.on('close', () => res.end());
 });
 
-// Serve HTML control page di GET /
-app.get('/', (req, res) => {
+// Browser GET HTML with stream
+app.get('/stream', (req, res) => {
     const html = `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Camera Stream Relay</title>
+            <title>Camera Stream</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
                 body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
@@ -68,8 +68,8 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="container">
-                <h1>Camera Stream Relay</h1>
-                <img src="/stream" alt="Camera Stream">
+                <h1>Camera Stream</h1>
+                <img src="/mjpeg" alt="Camera Stream">
                 <br>
                 <div class="btn-row">
                     <button onclick="switchCamera()">Switch Camera</button>
@@ -90,10 +90,16 @@ app.get('/', (req, res) => {
                             .catch(e => console.error(e));
                     }
                 </script>
+            </div>
         </body>
         </html>
     `;
     res.send(html);
+});
+
+// Redirect root ke /stream
+app.get('/', (req, res) => {
+    res.redirect('/stream');
 });
 
 // Health check untuk Render
