@@ -60,9 +60,10 @@ app.get('/', (req, res) => {
             <style>
                 body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
                 .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; image-transform: rotate(-90deg); transform: rotate(-90deg); transform-origin: center; }
-                button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 20px; background: #007bff; color: white; border: none; border-radius: 4px; }
+                img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px; background: #000; }
+                button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-top: 10px; background: #007bff; color: white; border: none; border-radius: 4px; }
                 button:hover { background: #0056b3; }
+                .btn-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
             </style>
         </head>
         <body>
@@ -70,16 +71,25 @@ app.get('/', (req, res) => {
                 <h1>Camera Stream Relay</h1>
                 <img src="/stream" alt="Camera Stream">
                 <br>
-                <button onclick="switchCamera()">Switch Camera</button>
-            </div>
-            <script>
-                function switchCamera() {
-                    fetch('/switch-camera', { method: 'POST' })
-                        .then(r => r.text())
-                        .then(msg => alert('Switch command sent to phone'))
-                        .catch(e => console.error(e));
-                }
-            </script>
+                <div class="btn-row">
+                    <button onclick="switchCamera()">Switch Camera</button>
+                    <button onclick="rotateImg(90)">↻ 90°</button>
+                    <button onclick="rotateImg(180)">↻ 180°</button>
+                    <button onclick="rotateImg(270)">↻ 270°</button>
+                    <button onclick="rotateImg(0)">Reset</button>
+                </div>
+                <script>
+                    const img = document.querySelector('img');
+                    function rotateImg(deg) {
+                        img.style.transform = `rotate(${deg}deg)`;
+                    }
+                    function switchCamera() {
+                        fetch('/switch-camera', { method: 'POST' })
+                            .then(r => r.text())
+                            .then(msg => alert('Switch command sent to phone'))
+                            .catch(e => console.error(e));
+                    }
+                </script>
         </body>
         </html>
     `;
