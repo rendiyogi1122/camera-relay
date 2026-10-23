@@ -63,6 +63,10 @@ app.post('/switch-camera/:id', (req, res) => {
 app.get('/mjpeg/:id', (req, res) => {
     const deviceId = req.params.id;
 
+    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
     const sendFrame = () => {
         const device = devices.get(deviceId);
         const frame = device ? device.frame : null;
@@ -78,14 +82,14 @@ app.get('/mjpeg/:id', (req, res) => {
             res.write(frame);
             res.write('\r\n');
         }
-        if (!req.closed) setTimeout(sendFrame, 100);  // ~10fps
+        if (!res.writableEnded) setTimeout(sendFrame, 100);  // ~10fps
     };
     sendFrame();
 
     req.on('close', async () => {
         // Stream close: mark stream as inactive in Supabase
         await updateStreamStatus(deviceId, 'nonaktif');
-        res.end();
+        try { res.end(); } catch (_) {}
     });
 });
 
