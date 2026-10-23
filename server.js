@@ -144,9 +144,27 @@ app.get('/stream/:id', (req, res) => {
     res.send(html);
 });
 
-// Root: daftar device aktif (dari in-memory Map)
-app.get('/stream', (req, res) => {
-    const links = Array.from(devices.entries()).map(([id]) => `<li><a href="/stream/${id}">${id}</a></li>`).join('');
+// Root: daftar device aktif (dari Supabase, fallback ke in-memory jika supabase belum siap)
+app.get('/stream', async (req, res) => {
+    let rows = [];
+    if (supabase) {
+        try {
+            const { data, error } = await supabase
+                .from('streams')
+                .select('device_id, status, updated_at')
+                .order('updated_at', { ascending: false })
+                .limit(10);
+            if (error) console.error('Supabase query error:', error.message);
+            else rows = data || [];
+        } catch (e) {
+            console.error('Supabase query exception:', e.message);
+        }
+    }
+
+    const rowsHtml = rows.length > 0
+        ? rows.map(r => `<tr><td><a href="/stream/${r.device_id}">${r.device_id}</a></td><td>${r.status}</td></tr>`).join('')
+        : '<tr><td colspan="2" style="color:#666">Belum ada device streaming</td></tr>';
+
     const html = `
         <!DOCTYPE html>
         <html>
@@ -157,17 +175,21 @@ app.get('/stream', (req, res) => {
                 body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
                 .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
                 h1 { margin-top: 0; }
-                a { color: #007bff; text-decoration: none; font-size: 18px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background: #f4f4f4; }
+                a { color: #007bff; text-decoration: none; font-size: 16px; }
                 a:hover { text-decoration: underline; }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>Camera Stream Relay</h1>
-                <p>Device aktif:</p>
-                <ul style="text-align: left; list-style: none; padding: 0;">
-                    ${links || '<li style="color:#666">Belum ada device streaming</li>'}
-                </ul>
+                <p>Device aktif (dari database):</p>
+                <table>
+                    <thead><tr><th>Device ID</th><th>Status</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
             </div>
         </body>
         </html>
