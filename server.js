@@ -1,27 +1,56 @@
+require('dotenv').config();
+
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+
 const app = express();
+
+// Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Map: deviceId -> { frame, timestamp, lastSent }
 const devices = new Map();
 const pendingCommands = new Map(); // deviceId -> command
 
-// HP POST frame di sini
-app.post('/upload-frame/:id', express.raw({ type: 'image/jpeg', limit: '5mb' }), (req, res) => {
+// Health check
+app.get('/health', (req, res) => res.send('OK'));
+
+// Helper: update stream status in Supabase (non-blocking)
+async function updateStreamStatus(deviceId, status) {
+    if (!supabase) return;
+    try {
+        const { data, error } = await supabase
+            .from('streams')
+            .update({ status: status, updated_at: new Date().toISOString() })
+            .eq('device_id', deviceId);
+        if (error) console.error('Supabase update error:', error.message);
+        else console.log(`Supabase: ${deviceId} -> ${status}`);
+    } catch (e) {
+        console.error('Supabase update exception:', e.message);
+    }
+}
+
+// HP POST frame
+app.post('/upload-frame/:id', express.raw({ type: 'image/jpeg', limit: '5mb' }), async (req, res) => {
     const deviceId = req.params.id;
-    
+
     // Init device kalau belum ada
     if (!devices.has(deviceId)) {
         devices.set(deviceId, { frame: null, timestamp: 0, lastSent: null });
+        // First upload: mark as active in Supabase
+        updateStreamStatus(deviceId, 'aktif');
     }
-    
+
     const device = devices.get(deviceId);
     device.frame = req.body;
     device.timestamp = Date.now();
-    
+
     // Kirim command yang pending (jika ada) ke HP
     const cmd = pendingCommands.get(deviceId) || 'ok';
     pendingCommands.delete(deviceId);
-    
+
     res.send(cmd);
 });
 
@@ -35,18 +64,13 @@ app.post('/switch-camera/:id', (req, res) => {
 // Browser GET MJPEG stream per device
 app.get('/mjpeg/:id', (req, res) => {
     const deviceId = req.params.id;
-    res.set({
-        'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-    });
-    
+
     const sendFrame = () => {
         const device = devices.get(deviceId);
         const frame = device ? device.frame : null;
         const lastSent = device ? device.lastSent : null;
         const timestamp = device ? device.timestamp : 0;
-        
+
         // Kirim frame hanya kalau baru (tidak duplikat) dan fresh (<500ms old)
         if (frame && frame !== lastSent && Date.now() - timestamp < 500) {
             device.lastSent = frame;
@@ -59,8 +83,12 @@ app.get('/mjpeg/:id', (req, res) => {
         if (!req.closed) setTimeout(sendFrame, 100);  // ~10fps
     };
     sendFrame();
-    
-    req.on('close', () => res.end());
+
+    req.on('close', async () => {
+        // Stream close: mark stream as inactive in Supabase
+        await updateStreamStatus(deviceId, 'nonaktif');
+        res.end();
+    });
 });
 
 // Browser GET HTML with stream per device
@@ -118,7 +146,7 @@ app.get('/stream/:id', (req, res) => {
     res.send(html);
 });
 
-// Root: daftar device aktif
+// Root: daftar device aktif (dari in-memory Map)
 app.get('/stream', (req, res) => {
     const links = Array.from(devices.entries()).map(([id]) => `<li><a href="/stream/${id}">${id}</a></li>`).join('');
     const html = `
@@ -154,8 +182,9 @@ app.get('/', (req, res) => {
     res.redirect('/stream');
 });
 
-// Health check untuk Render
-app.get('/health', (req, res) => res.send('OK'));
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`Relay running on ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Relay running on ${PORT}`);
+    if (supabase) console.log('Supabase client initialized');
+    else console.warn('Supabase not configured (missing SUPABASE_URL or SUPABASE_KEY)');
+});
