@@ -12,6 +12,12 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 const devices = new Map();
 const pendingCommands = new Map(); // deviceId -> command
 
+// Akses kode sederhana untuk halaman /stream
+const ACCESS_CODE = '1500';
+const MAX_ATTEMPTS = 2;
+const LOCKOUT_MS = 10000; // 10 detik
+const accessAttempts = new Map(); // ip -> { attempts, lockedUntil }
+
 // Health check
 app.get('/health', (req, res) => res.send('OK'));
 
@@ -28,6 +34,76 @@ async function updateStreamStatus(deviceId, status) {
     } catch (e) {
         console.error('Supabase update exception:', e.message);
     }
+}
+
+// Helper: ambil IP klien
+function getClientIp(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+    return req.socket.remoteAddress || req.ip || 'unknown';
+}
+
+// Helper: baca cookie
+function getCookie(req, name) {
+    const cookie = req.headers.cookie;
+    if (!cookie) return null;
+    for (const pair of cookie.split(';')) {
+        const [key, ...valParts] = pair.trim().split('=');
+        if (key === name) return valParts.join('=');
+    }
+    return null;
+}
+
+// Helper: tampilkan form kode akses
+function showAccessForm(req, res) {
+    const ip = getClientIp(req);
+    let record = accessAttempts.get(ip) || { attempts: 0, lockedUntil: 0 };
+    const now = Date.now();
+    const locked = record.lockedUntil > now;
+
+    // Reset setelah lockout lewat, beri percobaan baru
+    if (record.attempts >= MAX_ATTEMPTS && !locked) {
+        record = { attempts: 0, lockedUntil: 0 };
+        accessAttempts.set(ip, record);
+    }
+
+    const remaining = locked ? Math.ceil((record.lockedUntil - now) / 1000) : 0;
+    const disabled = locked ? 'disabled' : '';
+    const lockMsg = locked ? `<div class="error">Terlalu banyak percobaan gagal. Tunggu ${remaining} detik.</div>` : '';
+    const errMsg = record.attempts > 0 && !locked ? `<div class="error">Kode salah. Sisa percobaan: ${MAX_ATTEMPTS - record.attempts}.</div>` : '';
+
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Akses Kamera Stream</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: sans-serif; text-align: center; margin: 20px; background: #f0f0f0; }
+                .container { max-width: 400px; margin: 60px auto; background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                h2 { margin-top: 0; }
+                input { padding: 10px; font-size: 16px; width: 80%; box-sizing: border-box; margin-bottom: 12px; }
+                button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; width: 100%; }
+                button:disabled { background: #ccc; cursor: not-allowed; }
+                .error { color: #d00; margin-bottom: 12px; font-size: 14px; }
+                .hint { color: #666; font-size: 13px; margin-top: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>Masukkan Kode Akses</h2>
+                ${lockMsg}
+                ${errMsg}
+                <form method="POST" action="/access">
+                    <input type="text" name="code" autocomplete="off" ${disabled} placeholder="Kode akses" />
+                    <button type="submit" ${disabled}>Masuk</button>
+                </form>
+                <div class="hint">Maksimal ${MAX_ATTEMPTS} percobaan. Setelah gagal ${MAX_ATTEMPTS} kali, tombol disable selama 10 detik.</div>
+            </div>
+        </body>
+        </html>
+    `;
+    res.status(401).send(html);
 }
 
 // HP POST frame
@@ -150,6 +226,10 @@ app.get('/stream/:id', (req, res) => {
 
 // Root: daftar device aktif (dari Supabase, fallback ke in-memory jika supabase belum siap)
 app.get('/stream', async (req, res) => {
+    if (getCookie(req, 'access_granted') !== '1') {
+        return showAccessForm(req, res);
+    }
+
     let rows = [];
     if (supabase) {
         try {
@@ -199,6 +279,32 @@ app.get('/stream', async (req, res) => {
         </html>
     `;
     res.send(html);
+});
+
+// Proses login kode akses
+app.post('/access', express.urlencoded({ extended: false }), (req, res) => {
+    const ip = getClientIp(req);
+    const record = accessAttempts.get(ip) || { attempts: 0, lockedUntil: 0 };
+    const now = Date.now();
+
+    if (record.lockedUntil > now) {
+        return res.redirect('/stream');
+    }
+
+    const code = req.body.code;
+    if (code === ACCESS_CODE) {
+        accessAttempts.delete(ip);
+        res.setHeader('Set-Cookie', 'access_granted=1; Path=/; HttpOnly; Max-Age=3600; SameSite=Lax');
+        return res.redirect('/stream');
+    }
+
+    record.attempts += 1;
+    if (record.attempts >= MAX_ATTEMPTS) {
+        record.lockedUntil = now + LOCKOUT_MS;
+    }
+    accessAttempts.set(ip, record);
+
+    res.redirect('/stream');
 });
 
 // Redirect root ke /stream
